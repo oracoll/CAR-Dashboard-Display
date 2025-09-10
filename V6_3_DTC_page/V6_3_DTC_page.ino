@@ -207,7 +207,7 @@ unsigned long lastUpdate = 0, lastSensorUpdate = 0, lastTempRequest = 0;
 
 // —— FAULT CODE VARIABLES ——
 const int MAX_FAULTS = 10;
-String faultCodes[MAX_FAULTS];
+char faultCodes[MAX_FAULTS][30]; // Use char array to avoid String fragmentation
 int numFaults = 0;
 int faultScrollIndex = 0;
 unsigned long button3PressTime = 0;
@@ -431,12 +431,12 @@ const DTC dtc_descriptions[] PROGMEM = {
 };
 
 // Function to find a DTC description from the PROGMEM table
-String getDTCDescription(String code) {
+String getDTCDescription(const char* code) {
   for (unsigned int i = 0; i < (sizeof(dtc_descriptions) / sizeof(DTC)); i++) {
     // Need to read the pointer from PROGMEM first
     char* code_from_progmem = (char*)pgm_read_word(&dtc_descriptions[i].code);
     // Then compare the string using the PROGMEM version of strcmp
-    if (strcmp_P(code.c_str(), code_from_progmem) == 0) {
+    if (strcmp_P(code, code_from_progmem) == 0) {
       char* desc_from_progmem = (char*)pgm_read_word(&dtc_descriptions[i].description);
       return String(desc_from_progmem);
     }
@@ -469,8 +469,7 @@ char toHex(byte n) {
 }
 
 // Convert 2-byte ECU response to a standard DTC string (e.g., "P0102")
-String parseDTC(byte b1, byte b2) {
-  char dtc[6];
+void parseDTC(char* result, byte b1, byte b2) {
   char c1;
   switch (b1 >> 6) {
     case 0: c1 = 'P'; break; // Powertrain
@@ -478,8 +477,8 @@ String parseDTC(byte b1, byte b2) {
     case 2: c1 = 'B'; break; // Body
     case 3: c1 = 'U'; break; // Network
   }
-  snprintf(dtc, 6, "%c%d%c%c%c", c1, (b1 >> 4) & 0x03, toHex(b1), toHex(b2 >> 4), toHex(b2));
-  return String(dtc);
+  // Ensure the result is null-terminated by writing at most 6 bytes (5 chars + NUL)
+  snprintf(result, 6, "%c%d%c%c%c", c1, (b1 >> 4) & 0x03, toHex(b1), toHex(b2 >> 4), toHex(b2));
 }
 
 void readEcuFaults() {
@@ -533,7 +532,7 @@ void readEcuFaults() {
   KLine.end();
 
   if (len == 0) {
-    faultCodes[0] = "No Response From ECU";
+    strcpy(faultCodes[0], "No Response From ECU");
     numFaults = 1;
     return;
   }
@@ -544,12 +543,12 @@ void readEcuFaults() {
       byte b1 = response[1 + i * 2];
       byte b2 = response[2 + i * 2];
       if (b1 == 0x00 && b2 == 0x00) continue;
-      faultCodes[numFaults++] = parseDTC(b1, b2);
+      parseDTC(faultCodes[numFaults++], b1, b2);
     }
   }
   
   if (numFaults == 0) {
-    faultCodes[0] = "No Faults Found";
+    strcpy(faultCodes[0], "No Faults Found");
     numFaults = 1;
   }
 }
@@ -897,7 +896,7 @@ void drawFaultCodesPage() {
 
   if (numFaults > 0) {
     // Show one code and its description at a time
-    String code = faultCodes[faultScrollIndex];
+    const char* code = faultCodes[faultScrollIndex];
     String desc = getDTCDescription(code);
 
     // Draw the Code
