@@ -18,7 +18,7 @@
 #define WDT_TIMEOUT 10000 // 10 seconds
 constexpr float ADC_MAX = 4095.0;
 constexpr float VREF    = 3.3;
-const long SCREEN_UPDATE_INTERVAL = 100;
+const long SCREEN_UPDATE_INTERVAL = 250;
 const long SENSOR_UPDATE_INTERVAL = 100;
 const long TEMP_REQUEST_INTERVAL  = 800;
 const int  DEBOUNCE_DELAY         = 50;
@@ -216,6 +216,11 @@ bool button3LongPress = false;
 // For non-blocking messages
 bool messageMode = false;
 unsigned long messageEndTime = 0;
+
+// For debouncing EEPROM writes
+bool settingsChanged = false;
+unsigned long lastSettingsChangeTime = 0;
+const unsigned long SETTINGS_SAVE_DELAY = 5000; // ms
 
 // —— TPMS DATA ——
 int front_left_updated = 0;
@@ -1011,8 +1016,13 @@ void handleButton(int i) {
       break;
     case 1:
       // Enter deep sleep on button 2 press
-      Serial.println("Button 2 pressed, entering deep sleep");
-      Serial.print("GPIO 2 state before sleep: "); Serial.println(digitalRead(buttonPins[1]));
+      Serial.println("Button 2 pressed, waiting for release to enter deep sleep...");
+      // Wait for the button to be released before sleeping to prevent immediate wakeup.
+      while (buttons[1].read() == HIGH) {
+        buttons[1].update(); // Keep updating bounce state to correctly read the button.
+        delay(10);           // Small delay to prevent busy-waiting and allow other tasks.
+      }
+      Serial.println("Button released, entering deep sleep now.");
       display.clearDisplay();
       display.display();
       esp_deep_sleep_start();
@@ -1033,12 +1043,14 @@ void handleButton(int i) {
           dayBrightnessIndex = (dayBrightnessIndex + 1) % numBrightnessLevels;
           display.setContrast(brightnessLevels[dayBrightnessIndex]);
           EEPROM.write(ADDR_DAY_BRIGHTNESS, (uint8_t)dayBrightnessIndex);
-          EEPROM.commit();
+          settingsChanged = true;
+          lastSettingsChangeTime = millis();
         } else {
           nightBrightnessIndex = (nightBrightnessIndex + 1) % numBrightnessLevels;
           display.setContrast(brightnessLevels[nightBrightnessIndex]);
           EEPROM.write(ADDR_NIGHT_BRIGHTNESS, (uint8_t)nightBrightnessIndex);
-          EEPROM.commit();
+          settingsChanged = true;
+          lastSettingsChangeTime = millis();
         }
       }
       break;
@@ -1079,7 +1091,7 @@ void serial() {
             dayBrightnessIndex = val;
             if (isDayMode) display.setContrast(brightnessLevels[dayBrightnessIndex]);
             EEPROM.write(ADDR_DAY_BRIGHTNESS, (uint8_t)dayBrightnessIndex);
-            EEPROM.commit();
+            settingsChanged = true; lastSettingsChangeTime = millis();
             Serial.println("OK");
           } else {
             Serial.println("ERROR: day_brightness out of range (0-9)");
@@ -1090,7 +1102,7 @@ void serial() {
             nightBrightnessIndex = val;
             if (!isDayMode) display.setContrast(brightnessLevels[nightBrightnessIndex]);
             EEPROM.write(ADDR_NIGHT_BRIGHTNESS, (uint8_t)nightBrightnessIndex);
-            EEPROM.commit();
+            settingsChanged = true; lastSettingsChangeTime = millis();
             Serial.println("OK");
           } else {
             Serial.println("ERROR: night_brightness out of range (0-9)");
@@ -1100,7 +1112,7 @@ void serial() {
           if (val >= OIL_MIN_P_LIMIT && val <= OIL_MAX_P_LIMIT) {
             oil_pressure_warn_threshold = val;
             EEPROM.put(ADDR_OIL_WARN, oil_pressure_warn_threshold);
-            EEPROM.commit();
+            settingsChanged = true; lastSettingsChangeTime = millis();
             Serial.println("OK");
           } else {
             Serial.println("ERROR: oil_warn out of range (0.00 to 20.00)");
@@ -1110,7 +1122,7 @@ void serial() {
           if (val >= OIL_MIN_P_LIMIT && val <= OIL_MAX_P_LIMIT) {
             oil_pressure_crit_threshold = val;
             EEPROM.put(ADDR_OIL_CRIT, oil_pressure_crit_threshold);
-            EEPROM.commit();
+            settingsChanged = true; lastSettingsChangeTime = millis();
             Serial.println("OK");
           } else {
             Serial.println("ERROR: oil_crit out of range (0.00 to 20.00)");
@@ -1118,12 +1130,12 @@ void serial() {
         } else if (key == "oil_min_v") {
           oil_min_v = value.toFloat();
           EEPROM.put(ADDR_OIL_MIN_V, oil_min_v);
-          EEPROM.commit();
+          settingsChanged = true; lastSettingsChangeTime = millis();
           Serial.println("OK");
         } else if (key == "oil_max_v") {
           oil_max_v = value.toFloat();
           EEPROM.put(ADDR_OIL_MAX_V, oil_max_v);
-          EEPROM.commit();
+          settingsChanged = true; lastSettingsChangeTime = millis();
           Serial.println("OK");
         } else if (key == "oil_min_p") {
           float val = value.toFloat();
@@ -1132,7 +1144,7 @@ void serial() {
             min0[0] = oil_min_p;
             pages[1].bufMin = oil_min_p;
             EEPROM.put(ADDR_OIL_MIN_P, oil_min_p);
-            EEPROM.commit();
+            settingsChanged = true; lastSettingsChangeTime = millis();
             Serial.println("OK");
           } else {
             Serial.println("ERROR: oil_min_p out of range (0.00 to 20.00)");
@@ -1144,7 +1156,7 @@ void serial() {
             max0[0] = oil_max_p;
             pages[1].bufMax = oil_max_p;
             EEPROM.put(ADDR_OIL_MAX_P, oil_max_p);
-            EEPROM.commit();
+            settingsChanged = true; lastSettingsChangeTime = millis();
             Serial.println("OK");
           } else {
             Serial.println("ERROR: oil_max_p out of range (0.00 to 20.00)");
@@ -1152,12 +1164,12 @@ void serial() {
         } else if (key == "map_min_v") {
           map_min_v = value.toFloat();
           EEPROM.put(ADDR_MAP_MIN_V, map_min_v);
-          EEPROM.commit();
+          settingsChanged = true; lastSettingsChangeTime = millis();
           Serial.println("OK");
         } else if (key == "map_max_v") {
           map_max_v = value.toFloat();
           EEPROM.put(ADDR_MAP_MAX_V, map_max_v);
-          EEPROM.commit();
+          settingsChanged = true; lastSettingsChangeTime = millis();
           Serial.println("OK");
         } else if (key == "map_min_p") {
           float val = value.toFloat();
@@ -1166,7 +1178,7 @@ void serial() {
             min0[1] = map_min_p;
             pages[2].bufMin = map_min_p;
             EEPROM.put(ADDR_MAP_MIN_P, map_min_p);
-            EEPROM.commit();
+            settingsChanged = true; lastSettingsChangeTime = millis();
             Serial.println("OK");
           } else {
             Serial.println("ERROR: map_min_p out of range (0.00 to 5.00)");
@@ -1178,7 +1190,7 @@ void serial() {
             max0[1] = map_max_p;
             pages[2].bufMax = map_max_p;
             EEPROM.put(ADDR_MAP_MAX_P, map_max_p);
-            EEPROM.commit();
+            settingsChanged = true; lastSettingsChangeTime = millis();
             Serial.println("OK");
           } else {
             Serial.println("ERROR: map_max_p out of range (0.00 to 5.00)");
@@ -1188,7 +1200,7 @@ void serial() {
           if (val >= TEMP_MIN_OFFSET && val <= TEMP_MAX_OFFSET) {
             oil_temp_offset = val;
             EEPROM.put(ADDR_OIL_TEMP_OFFSET, oil_temp_offset);
-            EEPROM.commit();
+            settingsChanged = true; lastSettingsChangeTime = millis();
             Serial.println("OK");
           } else {
             Serial.println("ERROR: oil_temp_offset out of range (0.00 to 150.00)");
@@ -1198,7 +1210,7 @@ void serial() {
           if (val >= TEMP_MIN_OFFSET && val <= TEMP_MAX_OFFSET) {
             iat_offset = val;
             EEPROM.put(ADDR_IAT_OFFSET, iat_offset);
-            EEPROM.commit();
+            settingsChanged = true; lastSettingsChangeTime = millis();
             Serial.println("OK");
           } else {
             Serial.println("ERROR: iat_offset out of range (0.00 to 150.00)");
@@ -1208,7 +1220,7 @@ void serial() {
           if (val >= TEMP_MIN_OFFSET && val <= TEMP_MAX_OFFSET) {
             engine_temp_offset = val;
             EEPROM.put(ADDR_ENG_TEMP_OFFSET, engine_temp_offset);
-            EEPROM.commit();
+            settingsChanged = true; lastSettingsChangeTime = millis();
             Serial.println("OK");
           } else {
             Serial.println("ERROR: eng_temp_offset out of range (0.00 to 150.00)");
@@ -1216,22 +1228,22 @@ void serial() {
         } else if (key == "tpms_fl") {
           tpms_fl = value;
           saveString(ADDR_TPMS_FL, tpms_fl);
-          EEPROM.commit();
+          settingsChanged = true; lastSettingsChangeTime = millis();
           Serial.println("OK");
         } else if (key == "tpms_fr") {
           tpms_fr = value;
           saveString(ADDR_TPMS_FR, tpms_fr);
-          EEPROM.commit();
+          settingsChanged = true; lastSettingsChangeTime = millis();
           Serial.println("OK");
         } else if (key == "tpms_rl") {
           tpms_rl = value;
           saveString(ADDR_TPMS_RL, tpms_rl);
-          EEPROM.commit();
+          settingsChanged = true; lastSettingsChangeTime = millis();
           Serial.println("OK");
         } else if (key == "tpms_rr") {
           tpms_rr = value;
           saveString(ADDR_TPMS_RR, tpms_rr);
-          EEPROM.commit();
+          settingsChanged = true; lastSettingsChangeTime = millis();
           Serial.println("OK");
         } else {
           Serial.println("ERROR: Unknown key");
@@ -1448,5 +1460,13 @@ void loop() {
     engineTempMin = isnan(values0[5]) ? engineTempMin : min(engineTempMin, values0[5]);
     engineTempMax = isnan(values0[5]) ? engineTempMax : max(engineTempMax, values0[5]);
   }
+
+  // Check if settings have changed and save them to EEPROM after a delay
+  if (settingsChanged && (millis() - lastSettingsChangeTime > SETTINGS_SAVE_DELAY)) {
+    saveAll(); // This function handles the EEPROM.commit()
+    settingsChanged = false;
+    Serial.println("Settings saved to EEPROM due to inactivity.");
+  }
+
   serial();
 }
