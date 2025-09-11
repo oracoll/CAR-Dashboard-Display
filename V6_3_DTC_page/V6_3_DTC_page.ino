@@ -18,7 +18,7 @@
 #define WDT_TIMEOUT 10000 // 10 seconds
 constexpr float ADC_MAX = 4095.0;
 constexpr float VREF    = 3.3;
-const long SCREEN_UPDATE_INTERVAL = 250;
+const long SCREEN_UPDATE_INTERVAL = 50;
 const long SENSOR_UPDATE_INTERVAL = 100;
 const long TEMP_REQUEST_INTERVAL  = 800;
 const int  DEBOUNCE_DELAY         = 50;
