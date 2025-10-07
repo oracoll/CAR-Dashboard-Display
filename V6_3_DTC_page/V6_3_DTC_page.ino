@@ -113,6 +113,19 @@ Bounce buttons[5];
 OneWire oneWire(TEMP_SENSOR_PIN);
 DallasTemperature sensors(&oneWire);
 
+// --- SENSOR ADDRESSES ---
+// Replace these placeholder addresses with the ones you found using FindAddresses.ino
+// DeviceAddress oilTempSensor = {0x28, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+// DeviceAddress iatSensor = {0x28, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+// DeviceAddress engineTempSensor = {0x28, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+
+// To find your sensor addresses, upload and run the "FindAddresses.ino" sketch.
+// Then, copy the addresses here. For example:
+DeviceAddress oilTempSensor    = { 0x28, 0xFF, 0x64, 0x81, 0x86, 0x16, 0x03, 0x5F };
+DeviceAddress iatSensor        = { 0x28, 0xFF, 0x64, 0x81, 0x85, 0x16, 0x03, 0x9B };
+DeviceAddress engineTempSensor = { 0x28, 0xFF, 0x64, 0x81, 0x84, 0x16, 0x03, 0x9A };
+
+
 // —— ANALOG SENSORS ——
 #define OIL_PRESSURE_PIN 36
 #define MAP_PIN          39
@@ -660,7 +673,7 @@ inline float readBatteryVoltage() {
 }
 
 inline float readOilTemp() {
-  float t = sensors.getTempCByIndex(0);
+  float t = sensors.getTempC(oilTempSensor);
   if (t == DEVICE_DISCONNECTED_C) return NAN;
   t = t + oil_temp_offset;
   if (t < TEMP_MIN_OFFSET || t > TEMP_MAX_OFFSET) return NAN;
@@ -668,7 +681,7 @@ inline float readOilTemp() {
 }
 
 inline float readIAT() {
-  float t = sensors.getTempCByIndex(1);
+  float t = sensors.getTempC(iatSensor);
   if (t == DEVICE_DISCONNECTED_C) return NAN;
   t = t + iat_offset;
   if (t < TEMP_MIN_OFFSET || t > TEMP_MAX_OFFSET) return NAN;
@@ -676,7 +689,7 @@ inline float readIAT() {
 }
 
 inline float readEngineTemp() {
-  float t = sensors.getTempCByIndex(2);
+  float t = sensors.getTempC(engineTempSensor);
   if (t == DEVICE_DISCONNECTED_C) return NAN;
   t = t + engine_temp_offset;
   if (t < TEMP_MIN_OFFSET || t > TEMP_MAX_OFFSET) return NAN;
