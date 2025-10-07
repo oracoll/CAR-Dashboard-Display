@@ -10,3 +10,23 @@ This Arduino sketch is designed for an ESP32-based automotive monitoring system,
 - **Data Visualization**: Displays real-time sensor data, min/max values, and graphical trends for oil pressure, MAP, and battery voltage, with non-blocking updates and error handling for sensor faults.
 
 The system is designed for reliability with a watchdog timer, non-blocking K-Line reads, and efficient memory use via PROGMEM for static data. It provides a comprehensive interface for monitoring critical vehicle parameters and diagnosing issues.
+
+---
+
+### Sensor Configuration
+
+**Identifying Temperature Sensors**
+
+This project uses Dallas Temperature sensors (DS18B20), which have unique hardware addresses. To ensure the system reads the correct sensor for oil temperature, intake air temperature (IAT), and engine temperature, you must first identify each sensor's unique address.
+
+A utility sketch is provided in the `FindSensorAddresses` directory to help you with this process.
+
+**Instructions:**
+
+1.  **Open the Utility Sketch**: In the Arduino IDE, navigate to the `FindSensorAddresses` folder and open the `FindAddresses.ino` sketch.
+2.  **Upload to Your Device**: Upload this sketch to your ESP32.
+3.  **Open the Serial Monitor**: With the device connected, open the Serial Monitor (baud rate 115200). The monitor will list the unique address of every connected Dallas Temperature sensor.
+4.  **Identify Each Sensor**: To determine which address belongs to which sensor (e.g., the oil temperature sensor), you can gently heat one of the physical sensors and observe which address reports a rising temperature in the Serial Monitor. Note down the address for each sensor (oil, IAT, engine).
+5.  **Update the Main Sketch**: Open the main project sketch (`V6_3_DTC_page/V6_3_DTC_page.ino`). Find the "SENSOR ADDRESSES" section and replace the placeholder addresses with the actual addresses you discovered.
+
+By following these steps, you will ensure that the temperature readings are accurate and assigned to the correct functions in the display.
